@@ -6,7 +6,8 @@ function main
       package=("/usr/local/bin/helm" "/usr/local/bin/kind" )
       for i in ${package[@]}; do
             if [[ -x "$i" ]]; then
-                    echo "Dependency Check Passed"
+		    a=$(echo $i | cut -d '/' -f 5- | tr a-z A-Z) 
+                    echo "$a Dependency Check Passed"
             else
                 wget https://get.helm.sh/helm-v3.5.0-linux-amd64.tar.gz
                 tar -xvzf helm-v3.5.0-linux-amd64.tar.gz
@@ -22,27 +23,24 @@ function main
           if [[ "$action" == "deploy" ]]; then
               for main_func in ${func[@]}; do
 		         	  if [[ "$main_func" == "set_ingress_path" ]]; then
+					    sleep_time
 		         		    while true; do
 		         			    a=$(kubectl get pods -n ingress-nginx | grep "Running" | awk '{printf $2}')
 		         			    if [[ "$a" == "1/1" ]]; then
+							    kill -9 $SPIN_PID
 		         				    break 
 		         			    else    
-		         				    sleep 10 &  
-		         				    PID=$!
-		         				    i=1
-		         				    sp="****"
-		         				    echo -n ' '
-		         				    while [ -d /proc/$PID ]
-		         				    do
-		         					       printf "\b${sp:i++%${#sp}:1}"
-		         				    done
+							    spin &
+							    SPIN_PID=$!
+							    trap "kill -9 $SPIN_PID" `seq 0 15`
 		         			    fi
 		         		    done
 		         	  fi
 		         	  echo ""
 		         	  $main_func
 		          done
-                           
+			  trap "exit" INT TERM ERR
+                          trap "kill 0" EXIT
           elif [[ "$action" == "destroy" ]]; then
               destroy_kind_cluster
           else
@@ -52,7 +50,7 @@ function main
 } 
 function sleep_time 
 {
-  sleep 10
+  sleep 7
 }
 function  create_kind_cluster 
 {   
@@ -78,6 +76,20 @@ nodes:
 EOF
 }
 
+function spin 
+{
+spinner="/ - \\ \| / - \\ \|"
+  while :
+  do
+    for i in `seq 0 7`
+    do
+      echo -n "${spinner:$i:1}"
+      echo -en "\010"
+      sleep 1
+    done
+  done
+}
+
 function nginx_ingress_kind 
 {
     kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/static/provider/kind/deploy.yaml
@@ -85,15 +97,17 @@ function nginx_ingress_kind
 
 function set_mysql_passwd 
 {
-   a=$(echo "nikhil" | base64)
+   a=$(echo -n Nikhil123 | base64)
    cat <<EOF | kubectl create -f -
    apiVersion: v1
    kind: Secret
    metadata:
-     name: mysql-secrets
+      name: db-credentials
    type: Opaque
    data:
-     ROOT_PASSWORD: $a
+     mysql-password: $a
+     mysql-root-password: $a
+     mysql-user: $a
 EOF
 }
 
@@ -149,8 +163,8 @@ function deploy_mysql
                 - name: MYSQL_ROOT_PASSWORD
                   valueFrom:
                     secretKeyRef:
-                      name: mysql-secrets
-                      key: ROOT_PASSWORD
+                      name: db-credentials
+                      key: mysql-root-password
      volumeClaimTemplates:
      - metadata:
          name: mysql
