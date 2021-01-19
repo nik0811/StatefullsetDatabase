@@ -78,7 +78,7 @@ EOF
 
 function spin 
 {
-spinner="/ - \\ \| / - \\ \|"
+spinner="/-\\\|/-\\\|"
   while :
   do
     for i in `seq 0 7`
